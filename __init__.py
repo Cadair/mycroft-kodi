@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 from os.path import dirname
 
@@ -7,6 +7,7 @@ from mycroft.skills.core import MycroftSkill
 from mycroft.util.log import getLogger
 
 from kodipydent import Kodi
+import kodi
 
 _author__ = 'Stuart Mumford'
 
@@ -21,7 +22,7 @@ class KodiSkill(MycroftSkill):
     def __init__(self):
         super(KodiSkill, self).__init__(name="KodiSkill")
 
-        self.kodi = Kodi('10.21.5.254')
+        self.kodi = Kodi('10.21.5.180')
 
     def initialize(self):
         self.load_data_files(dirname(__file__))
@@ -43,7 +44,7 @@ class KodiSkill(MycroftSkill):
                              self.handle_play_film_intent)
 
     def handle_play_film_intent(self, message):
-        self.play_film_by_search(message.metadata['Film'])
+        kodi.play_film_by_search(self.kodi, message.metadata['Film'])
 
     def build_film_search_intent(self):
         find_films_intent = IntentBuilder("SearchFilmsIntent").require("SearchFilmKeywords").require("Film").build()
@@ -51,36 +52,24 @@ class KodiSkill(MycroftSkill):
         self.register_intent(find_films_intent, self.handle_film_search_intent)
 
     def handle_film_search_intent(self, message):
-        results = self.find_films_matching(message.metadata['Film'])
+        results = kodi.find_films_matching(self.kodi, message.metadata['Film'])
         self.speak_multi_film_match(message.metadata['Film'], results)
 
-    def find_films_matching(self, search):
-        """
-        Search the movie database for all the films matching a string.
+    def build_stop_intent(self):
+        stop_intent = IntentBuilder("StopIntent").require("StopKeywords").build()
+        self.register_intent(stop_intent, self.handle_stop_intent)
 
-        Parameters
-        ----------
+    def handle_stop_intent(self, message):
+        kodi.stop_playback()
 
-        Kodi : `beekeeper.api.API`
-            The current Kodi connection.
+    def build_playpause_intent(self):
+        playpause_intent = IntentBuilder("PlayPauseIntent").require("PlayPauseKeywords").build()
+        self.register_intent(playpause_intent, self.handle_playpause_intent)
 
-        search : `search`
-            The search string
+    def handle_playpause_intent(self, message):
+        kodi.playpause_playback()
 
-        Returns
-        -------
-
-        results: `list`
-            All the results matching the search.
-            (list of 'label', 'movieid' dicts.)
-        """
-        movies = self.kodi.VideoLibrary.GetMovies()['result']['movies']
-        results = []
-        for m in movies:
-            if search in m['label'].lower():
-                results.append(m)
-        return results
-
+    # Mycroft Actions, speaking etc. #
     def speak_multi_film_match(self, search, results):
         """
         Tell the user about a list of results.
@@ -91,22 +80,22 @@ class KodiSkill(MycroftSkill):
 
         self.speak(output)
 
-    def play_film(self, movieid):
-        """
-        Play a movie by id.
-        """
-        self.kodi.Playlist.Clear(playlistid=1)
-        self.kodi.Playlist.Add(playlistid=1, item={'movieid': movieid})
-        self.kodi.Player.Open(item={'playlistid': 1})
-
     def play_film_by_search(self, film_search):
         """
         Search for films using the query, then play if only one result,
         otherwise tell the user about the results.
+
+        Parameters
+        ----------
+
+        mycroft : `MycroftSkill` instance
+            The current Mycroft instance.
+
+        film_search : `string` A string to search the library for.
         """
-        results = self.find_films_matching(film_search)
+        results = kodi.find_films_matching(film_search)
         if len(results) == 1:
-            self.play_film(results[0]['movieid'])
+            kodi.play_film(results[0]['movieid'])
         elif len(results):
             self.speak_multi_film_match(film_search, results)
         else:
